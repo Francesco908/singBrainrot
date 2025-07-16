@@ -1,4 +1,4 @@
--- Sing Hub Advanced Auto Farm Script
+-- Sing Hub Complete Auto Game Script
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Services
@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 -- Variables
 local player = Players.LocalPlayer
@@ -21,14 +22,56 @@ local autoBuyEggsEnabled = false
 local autoGameEnabled = false
 local espEnabled = false
 local fastOpenEnabled = false
+local flyEnabled = false
 local originalWalkSpeed = humanoid.WalkSpeed
 local farmConnection
 local buyConnection
 local gameConnection
+local flyConnection
 local espBoxes = {}
+local bodyVelocity = nil
+
+-- Flying System
+local function setupFly()
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+    end
+    
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent = rootPart
+    
+    local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+    bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+    bodyAngularVelocity.Parent = rootPart
+end
+
+local function toggleFly()
+    if flyEnabled then
+        setupFly()
+        flyConnection = RunService.Heartbeat:Connect(function()
+            if bodyVelocity then
+                bodyVelocity.Velocity = Vector3.new(0, 2, 0)
+            end
+        end)
+    else
+        if bodyVelocity then
+            bodyVelocity:Destroy()
+            bodyVelocity = nil
+        end
+        if flyConnection then
+            flyConnection:Disconnect()
+            flyConnection = nil
+        end
+    end
+end
 
 -- ESP Functions
 local function createESPBox(obj, color, text)
+    if not obj or not obj.Parent then return end
+    
     local billboardGui = Instance.new("BillboardGui")
     billboardGui.Name = "ESPBox"
     billboardGui.Size = UDim2.new(0, 100, 0, 50)
@@ -71,58 +114,79 @@ local function updateESP()
     
     clearESP()
     
-    -- ESP for Items
     for _, obj in pairs(Workspace:GetDescendants()) do
         if obj.Name:match("^Item%d*$") then
             createESPBox(obj, Color3.new(0, 1, 0), "ITEM")
         elseif obj.Name:match("^Egg%d*$") then
             createESPBox(obj, Color3.new(1, 1, 0), "EGG")
-        elseif obj.Name:lower():find("money") then
+        elseif obj.Name:lower():find("money") or obj.Name:lower():find("cash") or obj.Name:lower():find("coin") then
             createESPBox(obj, Color3.new(0, 0, 1), "MONEY")
+        elseif obj.Name:lower():find("sell") or obj.Name:lower():find("shop") then
+            createESPBox(obj, Color3.new(1, 0, 0), "SELL")
         end
     end
 end
 
--- Function to find items for money farming
+-- Object Finding Functions
 local function findItems()
     local items = {}
-    
     for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj.Name:match("^Item%d*$") then -- Find Item, Item1, Item2, etc.
+        if obj.Name:match("^Item%d*$") then
             table.insert(items, obj)
         end
     end
-    
     return items
 end
 
--- Function to find eggs for buying
 local function findEggs()
     local eggs = {}
-    
     for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj.Name:match("^Egg%d*$") then -- Find Egg, Egg1, Egg2, etc.
+        if obj.Name:match("^Egg%d*$") then
             table.insert(eggs, obj)
         end
     end
-    
     return eggs
 end
 
--- Function to find money objects
 local function findMoney()
     local money = {}
-    
     for _, obj in pairs(Workspace:GetDescendants()) do
         if obj.Name:lower():find("money") or obj.Name:lower():find("cash") or obj.Name:lower():find("coin") then
             table.insert(money, obj)
         end
     end
-    
     return money
 end
 
--- Function to walk to object
+local function findSellAreas()
+    local sellAreas = {}
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name:lower():find("sell") or obj.Name:lower():find("shop") or obj.Name:lower():find("merchant") then
+            table.insert(sellAreas, obj)
+        end
+    end
+    return sellAreas
+end
+
+-- Movement Functions
+local function smoothWalkTo(targetPosition)
+    if not targetPosition or not humanoid or not rootPart then return false end
+    
+    local distance = (rootPart.Position - targetPosition).Magnitude
+    
+    if flyEnabled then
+        local bodyVel = rootPart:FindFirstChild("BodyVelocity")
+        if bodyVel then
+            local direction = (targetPosition - rootPart.Position).Unit
+            bodyVel.Velocity = direction * 50
+        end
+    else
+        humanoid:MoveTo(targetPosition)
+    end
+    
+    return true
+end
+
 local function walkToObject(targetObject)
     if not targetObject or not targetObject.Parent then return false end
     
@@ -140,7 +204,6 @@ local function walkToObject(targetObject)
         return false
     end
     
-    -- Update character and humanoid if necessary
     if not character or not character.Parent then
         character = player.Character
         if not character then return false end
@@ -148,16 +211,11 @@ local function walkToObject(targetObject)
         rootPart = character:FindFirstChild("HumanoidRootPart")
     end
     
-    if humanoid and rootPart then
-        humanoid:MoveTo(targetPosition)
-        return true
-    end
-    
-    return false
+    return smoothWalkTo(targetPosition)
 end
 
--- Function to click on object (for proximity prompts)
-local function clickObject(targetObject)
+-- Interaction Functions
+local function interactWithObject(targetObject)
     if not targetObject then return false end
     
     local prompt = targetObject:FindFirstChildOfClass("ProximityPrompt")
@@ -171,8 +229,9 @@ local function clickObject(targetObject)
     end
     
     if prompt then
+        prompt.HoldDuration = 0
         prompt:InputHoldBegin()
-        wait(prompt.HoldDuration or 0)
+        wait(0.1)
         prompt:InputHoldEnd()
         return true
     end
@@ -180,7 +239,6 @@ local function clickObject(targetObject)
     return false
 end
 
--- Function to modify ProximityPrompts
 local function modifyProximityPrompts()
     for _, prompt in pairs(game:GetDescendants()) do
         if prompt:IsA("ProximityPrompt") then
@@ -189,14 +247,13 @@ local function modifyProximityPrompts()
     end
 end
 
--- Auto Farm Money function
+-- Auto Farm Money Function
 local function autoFarmMoney()
     if not autoFarmMoneyEnabled then return end
     
     local items = findItems()
     
     if #items > 0 then
-        -- Find closest item
         local closestItem = nil
         local closestDistance = math.huge
         
@@ -211,21 +268,21 @@ local function autoFarmMoney()
             end
         end
         
-        -- Walk to closest item
         if closestItem then
             walkToObject(closestItem)
+            wait(0.1)
+            interactWithObject(closestItem)
         end
     end
 end
 
--- Auto Buy Eggs function
+-- Auto Buy Eggs Function
 local function autoBuyEggs()
     if not autoBuyEggsEnabled then return end
     
     local eggs = findEggs()
     
     if #eggs > 0 then
-        -- Find closest egg
         local closestEgg = nil
         local closestDistance = math.huge
         
@@ -240,23 +297,48 @@ local function autoBuyEggs()
             end
         end
         
-        -- Walk to and click closest egg
         if closestEgg then
             walkToObject(closestEgg)
-            wait(0.5) -- Wait to reach the egg
-            clickObject(closestEgg)
+            wait(0.5)
+            interactWithObject(closestEgg)
         end
     end
 end
 
--- Auto Game function (analyzes and collects money)
+-- Auto Game Function (Complete Automation)
 local function autoGame()
     if not autoGameEnabled then return end
     
+    -- Priority system: Items > Money > Eggs > Sell Areas
+    local items = findItems()
     local money = findMoney()
+    local eggs = findEggs()
+    local sellAreas = findSellAreas()
     
-    if #money > 0 then
-        -- Find closest money
+    -- First priority: Collect items for money
+    if #items > 0 then
+        local closestItem = nil
+        local closestDistance = math.huge
+        
+        for _, item in pairs(items) do
+            if item and item.Parent then
+                local itemPos = item:IsA("Model") and item:GetModelCFrame().Position or item.Position
+                local distance = (rootPart.Position - itemPos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestItem = item
+                end
+            end
+        end
+        
+        if closestItem then
+            walkToObject(closestItem)
+            wait(0.1)
+            interactWithObject(closestItem)
+        end
+        
+    -- Second priority: Collect money
+    elseif #money > 0 then
         local closestMoney = nil
         local closestDistance = math.huge
         
@@ -271,18 +353,63 @@ local function autoGame()
             end
         end
         
-        -- Walk to closest money
         if closestMoney then
             walkToObject(closestMoney)
+            wait(0.1)
+            interactWithObject(closestMoney)
+        end
+        
+    -- Third priority: Buy eggs
+    elseif #eggs > 0 then
+        local closestEgg = nil
+        local closestDistance = math.huge
+        
+        for _, egg in pairs(eggs) do
+            if egg and egg.Parent then
+                local eggPos = egg:IsA("Model") and egg:GetModelCFrame().Position or egg.Position
+                local distance = (rootPart.Position - eggPos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestEgg = egg
+                end
+            end
+        end
+        
+        if closestEgg then
+            walkToObject(closestEgg)
+            wait(0.5)
+            interactWithObject(closestEgg)
+        end
+        
+    -- Fourth priority: Go to sell areas
+    elseif #sellAreas > 0 then
+        local closestSellArea = nil
+        local closestDistance = math.huge
+        
+        for _, sellArea in pairs(sellAreas) do
+            if sellArea and sellArea.Parent then
+                local sellPos = sellArea:IsA("Model") and sellArea:GetModelCFrame().Position or sellArea.Position
+                local distance = (rootPart.Position - sellPos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestSellArea = sellArea
+                end
+            end
+        end
+        
+        if closestSellArea then
+            walkToObject(closestSellArea)
+            wait(0.5)
+            interactWithObject(closestSellArea)
         end
     end
 end
 
--- Create Rayfield interface
+-- Create Rayfield Interface
 local Window = Rayfield:CreateWindow({
     Name = "Sing Hub",
     LoadingTitle = "Sing Hub Loading",
-    LoadingSubtitle = "Advanced Auto Farm Script",
+    LoadingSubtitle = "Complete Auto Game Script",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "SingHubConfig",
@@ -296,12 +423,53 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
--- Main tab
+-- Main Tab
 local MainTab = Window:CreateTab("🎮 Main", 4483362458)
 
--- Auto Farm Money toggle
+-- Auto Game Toggle
+local AutoGameToggle = MainTab:CreateToggle({
+    Name = "Auto Game (Complete Automation)",
+    CurrentValue = false,
+    Flag = "AutoGameToggle",
+    Callback = function(Value)
+        autoGameEnabled = Value
+        
+        if Value then
+            if humanoid then
+                humanoid.WalkSpeed = 50
+            end
+            
+            gameConnection = RunService.Heartbeat:Connect(autoGame)
+            
+            Rayfield:Notify({
+                Title = "Auto Game",
+                Content = "Complete automation enabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            if humanoid then
+                humanoid.WalkSpeed = originalWalkSpeed
+            end
+            
+            if gameConnection then
+                gameConnection:Disconnect()
+                gameConnection = nil
+            end
+            
+            Rayfield:Notify({
+                Title = "Auto Game",
+                Content = "Complete automation disabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+-- Auto Farm Money Toggle
 local AutoFarmMoneyToggle = MainTab:CreateToggle({
-    Name = "Auto Farm Money (Items)",
+    Name = "Auto Farm Money (Items Only)",
     CurrentValue = false,
     Flag = "AutoFarmMoneyToggle",
     Callback = function(Value)
@@ -316,7 +484,7 @@ local AutoFarmMoneyToggle = MainTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "Auto Farm Money",
-                Content = "Auto Farm Money enabled!",
+                Content = "Item farming enabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -332,7 +500,7 @@ local AutoFarmMoneyToggle = MainTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "Auto Farm Money",
-                Content = "Auto Farm Money disabled!",
+                Content = "Item farming disabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -340,7 +508,7 @@ local AutoFarmMoneyToggle = MainTab:CreateToggle({
     end
 })
 
--- Auto Buy Eggs toggle
+-- Auto Buy Eggs Toggle
 local AutoBuyEggsToggle = MainTab:CreateToggle({
     Name = "Auto Buy Eggs",
     CurrentValue = false,
@@ -357,7 +525,7 @@ local AutoBuyEggsToggle = MainTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "Auto Buy Eggs",
-                Content = "Auto Buy Eggs enabled!",
+                Content = "Egg purchasing enabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -373,7 +541,7 @@ local AutoBuyEggsToggle = MainTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "Auto Buy Eggs",
-                Content = "Auto Buy Eggs disabled!",
+                Content = "Egg purchasing disabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -381,40 +549,26 @@ local AutoBuyEggsToggle = MainTab:CreateToggle({
     end
 })
 
--- Auto Game toggle
-local AutoGameToggle = MainTab:CreateToggle({
-    Name = "Auto Game (Smart Money Detection)",
+-- Fly Toggle
+local FlyToggle = MainTab:CreateToggle({
+    Name = "Fly",
     CurrentValue = false,
-    Flag = "AutoGameToggle",
+    Flag = "FlyToggle",
     Callback = function(Value)
-        autoGameEnabled = Value
+        flyEnabled = Value
+        toggleFly()
         
         if Value then
-            if humanoid then
-                humanoid.WalkSpeed = 50
-            end
-            
-            gameConnection = RunService.Heartbeat:Connect(autoGame)
-            
             Rayfield:Notify({
-                Title = "Auto Game",
-                Content = "Auto Game enabled!",
+                Title = "Fly",
+                Content = "Flight enabled!",
                 Duration = 3,
                 Image = 4483362458
             })
         else
-            if humanoid then
-                humanoid.WalkSpeed = originalWalkSpeed
-            end
-            
-            if gameConnection then
-                gameConnection:Disconnect()
-                gameConnection = nil
-            end
-            
             Rayfield:Notify({
-                Title = "Auto Game",
-                Content = "Auto Game disabled!",
+                Title = "Fly",
+                Content = "Flight disabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -422,7 +576,7 @@ local AutoGameToggle = MainTab:CreateToggle({
     end
 })
 
--- Walk speed slider
+-- Walk Speed Slider
 local WalkSpeedSlider = MainTab:CreateSlider({
     Name = "Walk Speed",
     Range = {16, 100},
@@ -437,10 +591,10 @@ local WalkSpeedSlider = MainTab:CreateSlider({
     end
 })
 
--- ESP tab
+-- ESP Tab
 local ESPTab = Window:CreateTab("👁️ ESP", 4483362458)
 
--- ESP toggle
+-- ESP Toggle
 local ESPToggle = ESPTab:CreateToggle({
     Name = "ESP Boxes",
     CurrentValue = false,
@@ -451,7 +605,6 @@ local ESPToggle = ESPTab:CreateToggle({
         if Value then
             updateESP()
             
-            -- Update ESP periodically
             spawn(function()
                 while espEnabled do
                     updateESP()
@@ -461,7 +614,7 @@ local ESPToggle = ESPTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "ESP",
-                Content = "ESP Boxes enabled!",
+                Content = "ESP visualization enabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -470,7 +623,7 @@ local ESPToggle = ESPTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "ESP",
-                Content = "ESP Boxes disabled!",
+                Content = "ESP visualization disabled!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -478,24 +631,24 @@ local ESPToggle = ESPTab:CreateToggle({
     end
 })
 
--- Manual ESP update button
+-- Manual ESP Update
 local UpdateESPButton = ESPTab:CreateButton({
     Name = "Update ESP",
     Callback = function()
         updateESP()
         Rayfield:Notify({
             Title = "ESP",
-            Content = "ESP updated!",
+            Content = "ESP display updated!",
             Duration = 2,
             Image = 4483362458
         })
     end
 })
 
--- Settings tab
+-- Settings Tab
 local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
 
--- Fast Open toggle
+-- Fast Open Toggle
 local FastOpenToggle = SettingsTab:CreateToggle({
     Name = "Fast Open (Proximity Prompts)",
     CurrentValue = false,
@@ -506,7 +659,6 @@ local FastOpenToggle = SettingsTab:CreateToggle({
         if Value then
             modifyProximityPrompts()
             
-            -- Listen for new proximity prompts
             ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
                 if fastOpenEnabled then
                     prompt.HoldDuration = 0
@@ -515,14 +667,14 @@ local FastOpenToggle = SettingsTab:CreateToggle({
             
             Rayfield:Notify({
                 Title = "Fast Open",
-                Content = "Fast Open enabled!",
+                Content = "Instant interactions enabled!",
                 Duration = 3,
                 Image = 4483362458
             })
         else
             Rayfield:Notify({
                 Title = "Fast Open",
-                Content = "Fast Open disabled!",
+                Content = "Normal interaction speed restored!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -530,55 +682,60 @@ local FastOpenToggle = SettingsTab:CreateToggle({
     end
 })
 
--- Apply fast open to all prompts button
+-- Apply Fast Open Button
 local ApplyFastOpenButton = SettingsTab:CreateButton({
     Name = "Apply Fast Open to All Prompts",
     Callback = function()
         modifyProximityPrompts()
         Rayfield:Notify({
             Title = "Fast Open",
-            Content = "Applied to all proximity prompts!",
+            Content = "Fast interactions applied globally!",
             Duration = 3,
             Image = 4483362458
         })
     end
 })
 
--- Analyze game button
+-- Game Analysis Button
 local AnalyzeButton = SettingsTab:CreateButton({
-    Name = "Analyze Game Objects",
+    Name = "Analyze Game Environment",
     Callback = function()
         local items = findItems()
         local eggs = findEggs()
         local money = findMoney()
+        local sellAreas = findSellAreas()
         
         Rayfield:Notify({
             Title = "Game Analysis",
-            Content = "Items: " .. #items .. " | Eggs: " .. #eggs .. " | Money: " .. #money,
+            Content = "Items: " .. #items .. " | Eggs: " .. #eggs .. " | Money: " .. #money .. " | Sell Areas: " .. #sellAreas,
             Duration = 5,
             Image = 4483362458
         })
     end
 })
 
--- Character reconnection handling
+-- Character Reconnection Management
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
-    -- Reapply settings if necessary
     if autoFarmMoneyEnabled or autoBuyEggsEnabled or autoGameEnabled then
         humanoid.WalkSpeed = WalkSpeedSlider.CurrentValue or 50
     end
+    
+    if flyEnabled then
+        wait(1)
+        toggleFly()
+    end
 end)
 
--- Loading complete notification
+-- Script Load Notification
 Rayfield:Notify({
     Title = "Sing Hub",
-    Content = "Advanced script loaded successfully!",
+    Content = "Complete automation system loaded successfully!",
     Duration = 5,
     Image = 4483362458
 })
 
-print("Sing Hub Advanced Auto Farm Script loaded successfully!")
+print("Sing Hub Complete Auto Game Script loaded successfully!")
