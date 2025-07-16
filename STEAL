@@ -1,26 +1,42 @@
--- Auto Farm script per BrainRot
--- Quando attivato crea un pulsante mobile e chiudibile per abilitare/disabilitare l'auto farm
+-- Auto Farm script per BrainRot (LocalScript)
+-- Posiziona questo script in StarterGui come LocalScript
 
 -- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
--- REFERENCES
+-- PLAYER E CHARACTER
 local player = Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
-local root = char:WaitForChild("HumanoidRootPart")
+assert(player, "Script non eseguito come LocalScript.")
+
+-- Aspetta che PlayerGui sia pronto
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Gestione Character
+local root
+local function onCharacterAdded(character)
+    root = character:WaitForChild("HumanoidRootPart")
+end
+if player.Character then
+    onCharacterAdded(player.Character)
+end
+player.CharacterAdded:Connect(onCharacterAdded)
+
+-- STATO
+local autoFarmEnabled = false
+local farmConnection
 
 -- GUI CREATION
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui
 
 local frame = Instance.new("Frame")
 frame.Name = "AutoFarmFrame"
-frame.Size = UDim2.new(0, 150, 0, 50)
-frame.Position = UDim2.new(0, 50, 0.5, -25)
-frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+frame.Size = UDim2.new(0, 160, 0, 60)
+frame.Position = UDim2.new(0.05, 0, 0.5, -30)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
@@ -29,8 +45,10 @@ local toggleBtn = Instance.new("TextButton")
 toggleBtn.Name = "ToggleButton"
 toggleBtn.Size = UDim2.new(1, -20, 1, -20)
 toggleBtn.Position = UDim2.new(0, 10, 0, 10)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(75, 75, 75)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 14
 toggleBtn.Text = "Auto Farm: OFF"
 toggleBtn.Parent = frame
 
@@ -40,40 +58,35 @@ closeBtn.Size = UDim2.new(0, 20, 0, 20)
 closeBtn.Position = UDim2.new(1, -25, 0, 5)
 closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 14
 closeBtn.Text = "X"
 closeBtn.Parent = frame
 
--- LOCAL STATE
-local autoFarmEnabled = false
-
--- FUNCTION: trova tutti gli item nel workspace
-define AutoFarm loop
-
+-- FUNZIONI UTILI
 local function getNearestItems()
+    if not root then return {} end
     local items = {}
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") and obj.Name == "Item" then
             table.insert(items, obj)
         end
     end
-    -- ordina per distanza crescente
-table.sort(items, function(a,b)
+    table.sort(items, function(a, b)
         return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
     end)
     return items
 end
 
--- MAIN LOOP
-local farmConnection
-
 local function startAutoFarm()
+    if farmConnection then return end
     farmConnection = RunService.Heartbeat:Connect(function()
-        if autoFarmEnabled then
+        if autoFarmEnabled and root then
             local items = getNearestItems()
-            if #items > 0 then
-                local target = items[1]
-                -- teletrasporta istantaneamente il giocatore
-                root.CFrame = target.CFrame + Vector3.new(0, 3, 0)
+            local target = items[1]
+            if target then
+                -- Teletrasporto sopra l'item
+                root.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
             end
         end
     end)
@@ -86,7 +99,7 @@ local function stopAutoFarm()
     end
 end
 
--- TOGGLE BUTTON HANDLER
+-- EVENTI GUI
 toggleBtn.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
     toggleBtn.Text = autoFarmEnabled and "Auto Farm: ON" or "Auto Farm: OFF"
@@ -97,11 +110,9 @@ toggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- CLOSE BUTTON HANDLER
 closeBtn.MouseButton1Click:Connect(function()
     stopAutoFarm()
     screenGui:Destroy()
 end)
 
--- AVVIO
-print("AutoFarm GUI initialized")
+print("[AutoFarm] GUI inizializzata correttamente.")
