@@ -1,0 +1,276 @@
+-- Sing Hub Auto Farm Script
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+-- Variables
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Control variables
+local autoFarmEnabled = false
+local fastOpenEnabled = false
+local originalWalkSpeed = humanoid.WalkSpeed
+local farmConnection
+
+-- Function to find eggs
+local function findEggs()
+    local eggs = {}
+    
+    -- Search in entire workspace
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name:match("^Egg%d*$") then -- Find Egg, Egg1, Egg2, etc.
+            table.insert(eggs, obj)
+        end
+    end
+    
+    return eggs
+end
+
+-- Function to walk to object
+local function walkToObject(targetObject)
+    if not targetObject or not targetObject.Parent then return false end
+    
+    local targetPosition
+    if targetObject:IsA("Model") then
+        targetPosition = targetObject:GetModelCFrame().Position
+    elseif targetObject:IsA("BasePart") then
+        targetPosition = targetObject.Position
+    else
+        return false
+    end
+    
+    -- Update character and humanoid if necessary
+    if not character or not character.Parent then
+        character = player.Character
+        if not character then return false end
+        humanoid = character:FindFirstChild("Humanoid")
+        rootPart = character:FindFirstChild("HumanoidRootPart")
+    end
+    
+    if humanoid and rootPart then
+        humanoid:MoveTo(targetPosition)
+        return true
+    end
+    
+    return false
+end
+
+-- Function to modify ProximityPrompts
+local function modifyProximityPrompts()
+    for _, prompt in pairs(game:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            prompt.HoldDuration = 0
+        end
+    end
+end
+
+-- Main farm function
+local function autoFarm()
+    if not autoFarmEnabled then return end
+    
+    local eggs = findEggs()
+    
+    if #eggs > 0 then
+        -- Find closest egg
+        local closestEgg = nil
+        local closestDistance = math.huge
+        
+        for _, egg in pairs(eggs) do
+            if egg and egg.Parent then
+                local distance = (rootPart.Position - (egg:IsA("Model") and egg:GetModelCFrame().Position or egg.Position)).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestEgg = egg
+                end
+            end
+        end
+        
+        -- Walk to closest egg
+        if closestEgg then
+            walkToObject(closestEgg)
+        end
+    end
+end
+
+-- Function to handle fast open
+local function toggleFastOpen()
+    if fastOpenEnabled then
+        -- Modify all existing proximity prompts
+        modifyProximityPrompts()
+        
+        -- Listen for new proximity prompts
+        ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
+            if fastOpenEnabled then
+                prompt.HoldDuration = 0
+            end
+        end)
+    end
+end
+
+-- Create Rayfield interface
+local Window = Rayfield:CreateWindow({
+    Name = "Sing Hub",
+    LoadingTitle = "Sing Hub Loading",
+    LoadingSubtitle = "Auto Farm Script",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "SingHubConfig",
+        FileName = "Config"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvitelink",
+        RememberJoins = true
+    },
+    KeySystem = false
+})
+
+-- Main tab
+local MainTab = Window:CreateTab("🥚 Main", 4483362458)
+
+-- Auto Farm toggle
+local AutoFarmToggle = MainTab:CreateToggle({
+    Name = "Auto Farm Eggs",
+    CurrentValue = false,
+    Flag = "AutoFarmToggle",
+    Callback = function(Value)
+        autoFarmEnabled = Value
+        
+        if Value then
+            -- Increase speed for farming
+            if humanoid then
+                humanoid.WalkSpeed = 50
+            end
+            
+            -- Start farm loop
+            farmConnection = RunService.Heartbeat:Connect(autoFarm)
+            
+            Rayfield:Notify({
+                Title = "Auto Farm",
+                Content = "Auto Farm enabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            -- Restore normal speed
+            if humanoid then
+                humanoid.WalkSpeed = originalWalkSpeed
+            end
+            
+            -- Stop farm loop
+            if farmConnection then
+                farmConnection:Disconnect()
+                farmConnection = nil
+            end
+            
+            Rayfield:Notify({
+                Title = "Auto Farm",
+                Content = "Auto Farm disabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+-- Fast Open toggle
+local FastOpenToggle = MainTab:CreateToggle({
+    Name = "Fast Open (Proximity Prompts)",
+    CurrentValue = false,
+    Flag = "FastOpenToggle",
+    Callback = function(Value)
+        fastOpenEnabled = Value
+        
+        if Value then
+            toggleFastOpen()
+            Rayfield:Notify({
+                Title = "Fast Open",
+                Content = "Fast Open enabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Fast Open",
+                Content = "Fast Open disabled!",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+-- Walk speed slider
+local WalkSpeedSlider = MainTab:CreateSlider({
+    Name = "Walk Speed",
+    Range = {16, 100},
+    Increment = 1,
+    Suffix = " Speed",
+    CurrentValue = 50,
+    Flag = "WalkSpeedSlider",
+    Callback = function(Value)
+        if humanoid then
+            humanoid.WalkSpeed = Value
+        end
+    end
+})
+
+-- Find eggs button
+local FindEggsButton = MainTab:CreateButton({
+    Name = "Find Available Eggs",
+    Callback = function()
+        local eggs = findEggs()
+        Rayfield:Notify({
+            Title = "Egg Search",
+            Content = "Found " .. #eggs .. " available eggs!",
+            Duration = 5,
+            Image = 4483362458
+        })
+    end
+})
+
+-- Settings tab
+local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
+
+-- Apply fast open to all prompts button
+local ApplyFastOpenButton = SettingsTab:CreateButton({
+    Name = "Apply Fast Open to All Prompts",
+    Callback = function()
+        modifyProximityPrompts()
+        Rayfield:Notify({
+            Title = "Fast Open",
+            Content = "Applied to all proximity prompts!",
+            Duration = 3,
+            Image = 4483362458
+        })
+    end
+})
+
+-- Character reconnection handling
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    
+    -- Reapply settings if necessary
+    if autoFarmEnabled then
+        humanoid.WalkSpeed = WalkSpeedSlider.CurrentValue or 50
+    end
+end)
+
+-- Loading complete notification
+Rayfield:Notify({
+    Title = "Sing Hub",
+    Content = "Script loaded successfully!",
+    Duration = 5,
+    Image = 4483362458
+})
+
+print("Sing Hub Auto Farm Script loaded successfully!")
