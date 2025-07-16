@@ -68,8 +68,8 @@ end
 
 local frame = Instance.new("Frame")
 frame.Name = "AutoFarmFrame"
-frame.Size = UDim2.new(0, 200, 0, 120)
-frame.Position = UDim2.new(0.05, 0, 0.5, -60)
+frame.Size = UDim2.new(0, 200, 0, 140)
+frame.Position = UDim2.new(0.05, 0, 0.5, -70)
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -83,7 +83,7 @@ frameCorner.Parent = frame
 -- Toggle AutoFarm
 local toggleBtn = createButton("ToggleButton", "Auto Farm: OFF", UDim2.new(0, 10, 0, 10), frame)
 -- Fast Buy / Fast Open Buttons
-o local buyBtn = createButton("FastBuyButton", "Fast Buy", UDim2.new(0, 10, 0, 40), frame)
+local buyBtn = createButton("FastBuyButton", "Fast Buy", UDim2.new(0, 10, 0, 40), frame)
 local openBtn = createButton("FastOpenButton", "Fast Open", UDim2.new(0, 10, 0, 70), frame)
 
 -- Close Button
@@ -108,7 +108,7 @@ local function getNearestItems()
     local items = {}
     local maxDistance = 1000
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and (obj.Name:match("^Item%d*$")) then
+        if obj:IsA("BasePart") and tostring(obj.Name):match("^Item%d*$") then
             local dist = (root.Position - obj.Position).Magnitude
             if dist <= maxDistance then
                 table.insert(items, {part = obj, distance = dist})
@@ -128,7 +128,7 @@ local function teleportToItem(item)
     local success, err = pcall(function()
         root.CFrame = CFrame.new(item.Position + Vector3.new(0, 5, 0))
     end)
-    if not success then warn("[AutoFarm] Errore teletrasporto:", err) end
+    if not success then warn("[AutoFarm] Errore teletrasporto: ", err) end
 end
 
 local function startAutoFarm()
@@ -169,10 +169,8 @@ end)
 
 buyBtn.MouseButton1Click:Connect(function()
     for _, prompt in ipairs(workspace:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") then
-            if prompt.ActionText:lower():find("buy") then
-                prompt.HoldDuration = 0
-            end
+        if prompt:IsA("ProximityPrompt") and prompt.ActionText:lower():find("buy") then
+            prompt.HoldDuration = 0
         end
     end
     print("[AutoFarm] Fast Buy abilitato.")
@@ -180,10 +178,8 @@ end)
 
 openBtn.MouseButton1Click:Connect(function()
     for _, prompt in ipairs(workspace:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") then
-            if prompt.ActionText:lower():find("open") then
-                prompt.HoldDuration = 0
-            end
+        if prompt:IsA("ProximityPrompt") and prompt.ActionText:lower():find("open") then
+            prompt.HoldDuration = 0
         end
     end
     print("[AutoFarm] Fast Open abilitato.")
