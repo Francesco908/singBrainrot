@@ -2,8 +2,8 @@
 -- Posiziona questo script in StarterGui come LocalScript
 
 -- SERVICES
-local Players     = game:GetService("Players")
-local RunService  = game:GetService("RunService")
+local Players      = game:GetService("Players")
+local RunService   = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 -- PLAYER E CHARACTER
@@ -20,7 +20,6 @@ local farmConnection
 
 -- Funzione di setup del Character
 local function onCharacterAdded(character)
-    -- Attendo root e humanoid
     local hrp = character:WaitForChild("HumanoidRootPart", 10)
     local hmd = character:WaitForChild("Humanoid", 10)
     if hrp and hmd then
@@ -32,9 +31,7 @@ local function onCharacterAdded(character)
     end
 end
 
--- Connetto l’evento CharacterAdded
 player.CharacterAdded:Connect(onCharacterAdded)
--- Se il Character è già pronto, lo setto subito
 if player.Character then
     onCharacterAdded(player.Character)
 end
@@ -51,38 +48,45 @@ screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
+local function createButton(name, text, pos, parent)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(1, -20, 0, 20)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 12
+    btn.Text = text
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = btn
+    return btn
+end
+
 local frame = Instance.new("Frame")
 frame.Name = "AutoFarmFrame"
-frame.Size = UDim2.new(0, 180, 0, 70)
-frame.Position = UDim2.new(0.05, 0, 0.5, -35)
+frame.Size = UDim2.new(0, 200, 0, 120)
+frame.Position = UDim2.new(0.05, 0, 0.5, -60)
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = frame
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = frame
 
--- Pulsante Toggle
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Name = "ToggleButton"
-toggleBtn.Size = UDim2.new(1, -20, 0, 35)
-toggleBtn.Position = UDim2.new(0, 10, 0, 10)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-toggleBtn.TextColor3 = Color3.new(1, 1, 1)
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 14
-toggleBtn.Text = "Auto Farm: OFF"
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Parent = frame
+-- Toggle AutoFarm
+local toggleBtn = createButton("ToggleButton", "Auto Farm: OFF", UDim2.new(0, 10, 0, 10), frame)
+-- Fast Buy / Fast Open Buttons
+o local buyBtn = createButton("FastBuyButton", "Fast Buy", UDim2.new(0, 10, 0, 40), frame)
+local openBtn = createButton("FastOpenButton", "Fast Open", UDim2.new(0, 10, 0, 70), frame)
 
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 4)
-toggleCorner.Parent = toggleBtn
-
--- Pulsante Close
+-- Close Button
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "CloseButton"
 closeBtn.Size = UDim2.new(0, 20, 0, 20)
@@ -94,7 +98,6 @@ closeBtn.TextSize = 12
 closeBtn.Text = "X"
 closeBtn.BorderSizePixel = 0
 closeBtn.Parent = frame
-
 local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 4)
 closeCorner.Parent = closeBtn
@@ -105,7 +108,7 @@ local function getNearestItems()
     local items = {}
     local maxDistance = 1000
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name == "Item" then
+        if obj:IsA("BasePart") and (obj.Name:match("^Item%d*$")) then
             local dist = (root.Position - obj.Position).Magnitude
             if dist <= maxDistance then
                 table.insert(items, {part = obj, distance = dist})
@@ -125,9 +128,7 @@ local function teleportToItem(item)
     local success, err = pcall(function()
         root.CFrame = CFrame.new(item.Position + Vector3.new(0, 5, 0))
     end)
-    if not success then
-        warn("[AutoFarm] Errore teletrasporto:", err)
-    end
+    if not success then warn("[AutoFarm] Errore teletrasporto:", err) end
 end
 
 local function startAutoFarm()
@@ -136,8 +137,8 @@ local function startAutoFarm()
     farmConnection = RunService.Heartbeat:Connect(function()
         if autoFarmEnabled and root then
             local items = getNearestItems()
-            if #items > 0 then
-                teleportToItem(items[1])
+            for _, itm in ipairs(items) do
+                teleportToItem(itm)
                 task.wait(0.1)
             end
         end
@@ -152,7 +153,7 @@ local function stopAutoFarm()
     end
 end
 
--- EVENTI GUI
+-- Eventi GUI
 toggleBtn.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
     if autoFarmEnabled then
@@ -166,6 +167,28 @@ toggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+buyBtn.MouseButton1Click:Connect(function()
+    for _, prompt in ipairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            if prompt.ActionText:lower():find("buy") then
+                prompt.HoldDuration = 0
+            end
+        end
+    end
+    print("[AutoFarm] Fast Buy abilitato.")
+end)
+
+openBtn.MouseButton1Click:Connect(function()
+    for _, prompt in ipairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            if prompt.ActionText:lower():find("open") then
+                prompt.HoldDuration = 0
+            end
+        end
+    end
+    print("[AutoFarm] Fast Open abilitato.")
+end)
+
 closeBtn.MouseButton1Click:Connect(function()
     stopAutoFarm()
     screenGui:Destroy()
@@ -173,9 +196,7 @@ closeBtn.MouseButton1Click:Connect(function()
 end)
 
 Players.PlayerRemoving:Connect(function(leavingPlayer)
-    if leavingPlayer == player then
-        stopAutoFarm()
-    end
+    if leavingPlayer == player then stopAutoFarm() end
 end)
 
-print("[AutoFarm] GUI inizializzata. Usa il pulsante per attivare/disattivare.")
+print("[AutoFarm] GUI inizializzata con Fast Buy e Fast Open.")
