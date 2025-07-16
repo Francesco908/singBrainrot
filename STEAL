@@ -4,27 +4,56 @@
 -- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 -- PLAYER E CHARACTER
 local player = Players.LocalPlayer
-assert(player, "Script non eseguito come LocalScript.")
+
+-- Controllo se il player esiste
+if not player then
+    warn("Player non trovato! Assicurati che sia un LocalScript.")
+    return
+end
 
 -- Aspetta che PlayerGui sia pronto
-local playerGui = player:WaitForChild("PlayerGui")
-
--- Gestione Character
-local root
-local function onCharacterAdded(character)
-    root = character:WaitForChild("HumanoidRootPart")
+local playerGui = player:WaitForChild("PlayerGui", 10)
+if not playerGui then
+    warn("PlayerGui non trovato!")
+    return
 end
+
+-- VARIABILI GLOBALI
+local root
+local humanoid
+local autoFarmEnabled = false
+local farmConnection
+
+-- Gestione Character con controlli aggiuntivi
+local function onCharacterAdded(character)
+    if character then
+        -- Aspetta che HumanoidRootPart sia disponibile
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
+        local humanoidComponent = character:WaitForChild("Humanoid", 10)
+        
+        if humanoidRootPart and humanoidComponent then
+            root = humanoidRootPart
+            humanoid = humanoidComponent
+            print("[AutoFarm] Character caricato correttamente.")
+        else
+            warn("[AutoFarm] Impossibile ottenere HumanoidRootPart o Humanoid.")
+        end
+    end
+end
+
+-- Connetti l'evento per il character
 if player.Character then
     onCharacterAdded(player.Character)
 end
 player.CharacterAdded:Connect(onCharacterAdded)
 
--- STATO
-local autoFarmEnabled = false
-local farmConnection
+-- Aspetta che il character sia caricato prima di continuare
+repeat wait() until player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+onCharacterAdded(player.Character)
 
 -- GUI CREATION
 local screenGui = Instance.new("ScreenGui")
@@ -32,26 +61,41 @@ screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
+-- Frame principale con bordi arrotondati
 local frame = Instance.new("Frame")
 frame.Name = "AutoFarmFrame"
-frame.Size = UDim2.new(0, 160, 0, 60)
-frame.Position = UDim2.new(0.05, 0, 0.5, -30)
+frame.Size = UDim2.new(0, 180, 0, 70)
+frame.Position = UDim2.new(0.05, 0, 0.5, -35)
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
 
+-- Corner per il frame
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = frame
+
+-- Toggle Button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Name = "ToggleButton"
-toggleBtn.Size = UDim2.new(1, -20, 1, -20)
+toggleBtn.Size = UDim2.new(1, -20, 0, 35)
 toggleBtn.Position = UDim2.new(0, 10, 0, 10)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 toggleBtn.TextColor3 = Color3.new(1, 1, 1)
 toggleBtn.Font = Enum.Font.SourceSansBold
 toggleBtn.TextSize = 14
 toggleBtn.Text = "Auto Farm: OFF"
+toggleBtn.BorderSizePixel = 0
 toggleBtn.Parent = frame
 
+-- Corner per il toggle button
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 4)
+toggleCorner.Parent = toggleBtn
+
+-- Close Button
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "CloseButton"
 closeBtn.Size = UDim2.new(0, 20, 0, 20)
@@ -59,34 +103,76 @@ closeBtn.Position = UDim2.new(1, -25, 0, 5)
 closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeBtn.TextColor3 = Color3.new(1, 1, 1)
 closeBtn.Font = Enum.Font.SourceSansBold
-closeBtn.TextSize = 14
+closeBtn.TextSize = 12
 closeBtn.Text = "X"
+closeBtn.BorderSizePixel = 0
 closeBtn.Parent = frame
+
+-- Corner per il close button
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 4)
+closeCorner.Parent = closeBtn
 
 -- FUNZIONI UTILI
 local function getNearestItems()
     if not root then return {} end
+    
     local items = {}
+    local maxDistance = 1000 -- Distanza massima per cercare items
+    
+    -- Cerca in workspace per items
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name == "Item" then
-            table.insert(items, obj)
+        if obj:IsA("BasePart") and obj.Name == "Item" and obj.Parent then
+            local distance = (root.Position - obj.Position).Magnitude
+            if distance <= maxDistance then
+                table.insert(items, {part = obj, distance = distance})
+            end
         end
     end
+    
+    -- Ordina per distanza
     table.sort(items, function(a, b)
-        return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
+        return a.distance < b.distance
     end)
-    return items
+    
+    -- Restituisce solo le parti
+    local sortedItems = {}
+    for _, item in pairs(items) do
+        table.insert(sortedItems, item.part)
+    end
+    
+    return sortedItems
+end
+
+local function teleportToItem(item)
+    if not root or not item then return end
+    
+    -- Controllo se l'item esiste ancora
+    if not item.Parent then return end
+    
+    -- Teletrasporto sicuro con controllo
+    local success, err = pcall(function()
+        root.CFrame = CFrame.new(item.Position + Vector3.new(0, 5, 0))
+    end)
+    
+    if not success then
+        warn("[AutoFarm] Errore nel teletrasporto: " .. tostring(err))
+    end
 end
 
 local function startAutoFarm()
     if farmConnection then return end
+    
+    print("[AutoFarm] Avvio auto farm...")
+    
     farmConnection = RunService.Heartbeat:Connect(function()
-        if autoFarmEnabled and root then
+        if autoFarmEnabled and root and humanoid then
             local items = getNearestItems()
             local target = items[1]
+            
             if target then
-                -- Teletrasporto sopra l'item
-                root.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
+                teleportToItem(target)
+                wait(0.1) -- Piccola pausa per evitare spam
             end
         end
     end)
@@ -96,16 +182,21 @@ local function stopAutoFarm()
     if farmConnection then
         farmConnection:Disconnect()
         farmConnection = nil
+        print("[AutoFarm] Auto farm fermato.")
     end
 end
 
 -- EVENTI GUI
 toggleBtn.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
-    toggleBtn.Text = autoFarmEnabled and "Auto Farm: ON" or "Auto Farm: OFF"
+    
     if autoFarmEnabled then
+        toggleBtn.Text = "Auto Farm: ON"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
         startAutoFarm()
     else
+        toggleBtn.Text = "Auto Farm: OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
         stopAutoFarm()
     end
 end)
@@ -113,6 +204,16 @@ end)
 closeBtn.MouseButton1Click:Connect(function()
     stopAutoFarm()
     screenGui:Destroy()
+    print("[AutoFarm] GUI chiusa.")
+end)
+
+-- Cleanup quando il player lascia
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+    if leavingPlayer == player then
+        stopAutoFarm()
+    end
 end)
 
 print("[AutoFarm] GUI inizializzata correttamente.")
+print("[AutoFarm] Clicca il pulsante per attivare/disattivare l'auto farm.")
+print("[AutoFarm] Usa X per chiudere la GUI.")
