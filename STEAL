@@ -1,198 +1,151 @@
 -- Auto Farm script per BrainRot (LocalScript)
--- Posiziona questo script in StarterGui come LocalScript
+-- Posiziona questo script in StarterPlayerScripts come LocalScript
 
 -- SERVICES
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
--- PLAYER E CHARACTER
+-- PLAYER
 local player = Players.LocalPlayer
 if not player then
-    warn("Player non trovato! Assicurati che sia un LocalScript in StarterGui.")
+    warn("[AutoFarm] Player non trovato. Assicurati di usare un LocalScript.")
     return
 end
 
--- Variabili di gioco
-local root, humanoid
+-- VARS
+local root
 local autoFarmEnabled = false
 local farmConnection
 
--- Funzione di setup del Character
-local function onCharacterAdded(character)
-    local hrp = character:WaitForChild("HumanoidRootPart", 10)
-    local hmd = character:WaitForChild("Humanoid", 10)
-    if hrp and hmd then
+-- Setup Character
+local function setupCharacter(char)
+    local hrp = char:WaitForChild("HumanoidRootPart", 10)
+    if hrp then
         root = hrp
-        humanoid = hmd
-        print("[AutoFarm] Character caricato correttamente.")
-    else
-        warn("[AutoFarm] Impossibile ottenere HumanoidRootPart o Humanoid.")
+        print("[AutoFarm] Root impostato.")
     end
 end
+player.CharacterAdded:Connect(setupCharacter)
+if player.Character then setupCharacter(player.Character) end
 
-player.CharacterAdded:Connect(onCharacterAdded)
-if player.Character then
-    onCharacterAdded(player.Character)
-end
-
--- GUI CREATION
+-- Delay until PlayerGui disponibile
 local playerGui = player:WaitForChild("PlayerGui", 10)
-if not playerGui then
-    warn("PlayerGui non trovato!")
-    return
-end
+if not playerGui then warn("[AutoFarm] PlayerGui non trovato.") return end
 
+-- Crea GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
-local function createButton(name, text, pos, parent)
-    local btn = Instance.new("TextButton")
-    btn.Name = name
-    btn.Size = UDim2.new(1, -20, 0, 20)
-    btn.Position = pos
-    btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 12
-    btn.Text = text
-    btn.BorderSizePixel = 0
-    btn.Parent = parent
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 4)
-    corner.Parent = btn
-    return btn
-end
-
 local frame = Instance.new("Frame")
-frame.Name = "AutoFarmFrame"
 frame.Size = UDim2.new(0, 200, 0, 140)
 frame.Position = UDim2.new(0.05, 0, 0.5, -70)
-frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 8)
-frameCorner.Parent = frame
+-- Create button helper
+local function newBtn(text, y)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -20, 0, 25)
+    b.Position = UDim2.new(0, 10, 0, y)
+    b.Text = text
+    b.Font = Enum.Font.SourceSansBold
+    b.TextSize = 14
+    b.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    b.TextColor3 = Color3.new(1,1,1)
+    b.BorderSizePixel = 0
+    local cr = Instance.new("UICorner", b)
+    cr.CornerRadius = UDim.new(0,4)
+    b.Parent = frame
+    return b
+end
 
--- Toggle AutoFarm
-local toggleBtn = createButton("ToggleButton", "Auto Farm: OFF", UDim2.new(0, 10, 0, 10), frame)
--- Fast Buy / Fast Open Buttons
-local buyBtn = createButton("FastBuyButton", "Fast Buy", UDim2.new(0, 10, 0, 40), frame)
-local openBtn = createButton("FastOpenButton", "Fast Open", UDim2.new(0, 10, 0, 70), frame)
+local toggleBtn = newBtn("Auto Farm: OFF", 10)
+local buyBtn    = newBtn("Fast Buy", 45)
+local openBtn   = newBtn("Fast Open", 80)
 
--- Close Button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "CloseButton"
-closeBtn.Size = UDim2.new(0, 20, 0, 20)
-closeBtn.Position = UDim2.new(1, -25, 0, 5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-closeBtn.TextColor3 = Color3.new(1, 1, 1)
-closeBtn.Font = Enum.Font.SourceSansBold
-closeBtn.TextSize = 12
-closeBtn.Text = "X"
-closeBtn.BorderSizePixel = 0
-closeBtn.Parent = frame
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 4)
-closeCorner.Parent = closeBtn
-
--- FUNZIONI UTILI
-local function getNearestItems()
+-- Utility: trova items
+local function getItems()
     if not root then return {} end
-    local items = {}
-    local maxDistance = 1000
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and tostring(obj.Name):match("^Item%d*$") then
-            local dist = (root.Position - obj.Position).Magnitude
-            if dist <= maxDistance then
-                table.insert(items, {part = obj, distance = dist})
-            end
+    local list = {}
+    for _, part in ipairs(workspace:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name:match("^Item%d*$") then
+            local dist = (root.Position - part.Position).Magnitude
+            if dist < 1000 then table.insert(list, part) end
         end
     end
-    table.sort(items, function(a, b) return a.distance < b.distance end)
-    local result = {}
-    for _, entry in ipairs(items) do
-        table.insert(result, entry.part)
-    end
-    return result
-end
-
-local function teleportToItem(item)
-    if not root or not item or not item.Parent then return end
-    local success, err = pcall(function()
-        root.CFrame = CFrame.new(item.Position + Vector3.new(0, 5, 0))
+    table.sort(list, function(a,b)
+        return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
     end)
-    if not success then warn("[AutoFarm] Errore teletrasporto: ", err) end
+    return list
 end
 
-local function startAutoFarm()
+-- Teleporta
+local function tp(p)
+    if root and p and p.Parent then
+        root.CFrame = CFrame.new(p.Position + Vector3.new(0,5,0))
+    end
+end
+
+-- AutoFarm
+local function start()
     if farmConnection then return end
-    print("[AutoFarm] Avvio auto farm...")
     farmConnection = RunService.Heartbeat:Connect(function()
-        if autoFarmEnabled and root then
-            local items = getNearestItems()
-            for _, itm in ipairs(items) do
-                teleportToItem(itm)
+        if autoFarmEnabled then
+            for _, itm in ipairs(getItems()) do
+                tp(itm)
                 task.wait(0.1)
             end
         end
     end)
 end
-
-local function stopAutoFarm()
-    if farmConnection then
-        farmConnection:Disconnect()
-        farmConnection = nil
-        print("[AutoFarm] Auto farm fermato.")
-    end
+local function stop()
+    if farmConnection then farmConnection:Disconnect() farmConnection = nil end
 end
 
--- Eventi GUI
+-- Events
 toggleBtn.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
-    if autoFarmEnabled then
-        toggleBtn.Text = "Auto Farm: ON"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-        startAutoFarm()
-    else
-        toggleBtn.Text = "Auto Farm: OFF"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-        stopAutoFarm()
-    end
+    toggleBtn.Text = autoFarmEnabled and "Auto Farm: ON" or "Auto Farm: OFF"
+    task.wait()
+    if autoFarmEnabled then start() else stop() end
 end)
 
 buyBtn.MouseButton1Click:Connect(function()
-    for _, prompt in ipairs(workspace:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") and prompt.ActionText:lower():find("buy") then
-            prompt.HoldDuration = 0
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") and v.ActionText:lower():find("buy") then
+            v.HoldDuration = 0
         end
     end
-    print("[AutoFarm] Fast Buy abilitato.")
+    print("[AutoFarm] Fast Buy attivato.")
 end)
 
 openBtn.MouseButton1Click:Connect(function()
-    for _, prompt in ipairs(workspace:GetDescendants()) do
-        if prompt:IsA("ProximityPrompt") and prompt.ActionText:lower():find("open") then
-            prompt.HoldDuration = 0
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") and v.ActionText:lower():find("open") then
+            v.HoldDuration = 0
         end
     end
-    print("[AutoFarm] Fast Open abilitato.")
+    print("[AutoFarm] Fast Open attivato.")
 end)
 
+-- Close
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(0,20,0,20)
+closeBtn.Position = UDim2.new(1,-25,0,5)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 12
+closeBtn.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,4)
 closeBtn.MouseButton1Click:Connect(function()
-    stopAutoFarm()
+    stop()
     screenGui:Destroy()
-    print("[AutoFarm] GUI chiusa.")
 end)
 
-Players.PlayerRemoving:Connect(function(leavingPlayer)
-    if leavingPlayer == player then stopAutoFarm() end
-end)
-
-print("[AutoFarm] GUI inizializzata con Fast Buy e Fast Open.")
+print("[AutoFarm] GUI creata con successo.")
