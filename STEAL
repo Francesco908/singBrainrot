@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 -- PLAYER
 local player = Players.LocalPlayer
 if not player then
-    warn("[AutoFarm] Player non trovato. Assicurati di usare un LocalScript.")
+    warn("[AutoFarm] Player not found. Ensure you are using a LocalScript.")
     return
 end
 
@@ -22,17 +22,17 @@ local function setupCharacter(char)
     local hrp = char:WaitForChild("HumanoidRootPart", 10)
     if hrp then
         root = hrp
-        print("[AutoFarm] Root impostato.")
+        print("[AutoFarm] Root set.")
     end
 end
 player.CharacterAdded:Connect(setupCharacter)
 if player.Character then setupCharacter(player.Character) end
 
--- Delay until PlayerGui disponibile
+-- Delay until PlayerGui available
 local playerGui = player:WaitForChild("PlayerGui", 10)
-if not playerGui then warn("[AutoFarm] PlayerGui non trovato.") return end
+if not playerGui then warn("[AutoFarm] PlayerGui not found.") return end
 
--- Crea GUI
+-- Create GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
@@ -69,7 +69,7 @@ local toggleBtn = newBtn("Auto Farm: OFF", 10)
 local buyBtn    = newBtn("Fast Buy", 45)
 local openBtn   = newBtn("Fast Open", 80)
 
--- Utility: trova items
+-- Utility: find items
 local function getItems()
     if not root then return {} end
     local list = {}
@@ -85,7 +85,7 @@ local function getItems()
     return list
 end
 
--- Teleporta
+-- Teleport
 local function tp(p)
     if root and p and p.Parent then
         root.CFrame = CFrame.new(p.Position + Vector3.new(0,5,0))
@@ -112,6 +112,7 @@ end
 toggleBtn.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
     toggleBtn.Text = autoFarmEnabled and "Auto Farm: ON" or "Auto Farm: OFF"
+    print("[AutoFarm] Auto Farm " .. (autoFarmEnabled and "enabled." or "disabled."))
     task.wait()
     if autoFarmEnabled then start() else stop() end
 end)
@@ -122,7 +123,7 @@ buyBtn.MouseButton1Click:Connect(function()
             v.HoldDuration = 0
         end
     end
-    print("[AutoFarm] Fast Buy attivato.")
+    print("[AutoFarm] Fast Buy activated.")
 end)
 
 openBtn.MouseButton1Click:Connect(function()
@@ -131,7 +132,7 @@ openBtn.MouseButton1Click:Connect(function()
             v.HoldDuration = 0
         end
     end
-    print("[AutoFarm] Fast Open attivato.")
+    print("[AutoFarm] Fast Open activated.")
 end)
 
 -- Close
@@ -148,4 +149,4 @@ closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
-print("[AutoFarm] GUI creata con successo.")
+print("[AutoFarm] GUI created successfully.")
